@@ -7,6 +7,9 @@ from sklearn.metrics import r2_score, mean_squared_error, make_scorer
 from sklearn.cross_validation import ShuffleSplit
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.model_selection import GridSearchCV
+from sklearn.cross_validation import train_test_split
+
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 '''
 Main method.
@@ -17,24 +20,41 @@ def main():
     testing_set = pd.read_csv('data/test.csv')
     # print training_set.head()
     # print testing_set.head()
-    
-    # TODO: clean up data:
-    # 1. drop irrelevant/invalid features
-    # 2. label encoding on features requiring transformation
 
     # split training set to features and labels
     training_set_labels = training_set['SalePrice']
     training_set_features = training_set.drop('SalePrice', axis=1)
+    
+    # TODO: clean up and preprocess data
+    # 1. drop irrelevant/invalid features
+    # 2. label encoding on features requiring transformation
 
-    # find best decision tree regressor model with grid search and cross validation
-    regressor_model = fit_model(training_set_features, training_set_labels)
+    # test with a few relevant features only
+    relevant_features = ['OverallQual', 'OverallCond', 'TotalBsmtSF', '1stFlrSF', '2ndFlrSF']
+    training_set_features = training_set_features[relevant_features]
+
+    # shuffle and split training data
+    X_train, X_test, y_train, y_test = train_test_split(
+        training_set_features, 
+        training_set_labels, 
+        test_size=0.2, 
+        random_state=42)
+    
+    # get optimal decision tree regressor model
+    regressor_model = get_regressor_model(X_train, y_train)
     print "Optimal max depth for model {}".format(regressor_model.get_params()['max_depth'])
 
+    # predict on test sets
+    pred = regressor_model.predict(X_test)
+    # perf_metric_rmse(y_test, pred)
+    print "R2 score from model prediction:"
+    perf_metric_r2(y_test, pred)
+
 '''
-Performs grid search cross validation over max depth parameter for a decision tree regressor model
+Performs grid search cross validation over max depth parameter to get optimal decision tree regressor model
 trained on input data [X, y].
 '''
-def fit_model(X, y):
+def get_regressor_model(X, y):
     # create cross validation sets from training data
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
