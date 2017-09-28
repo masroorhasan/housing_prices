@@ -22,38 +22,55 @@ def main():
     testing_set = pd.read_csv('data/test.csv')
     # print training_set.head()
     # print testing_set.head()
-    print training_set.columns
+    # print training_set.columns
     print training_set['SalePrice'].describe()
 
     # heat map
-    de.heat_map(training_set)
+    # de.heat_map(training_set)
 
-    # scatter plots of feature against saleprice
-    de.scatter_plot(training_set, 'GrLivArea')
-    de.scatter_plot(training_set, 'OverallQual')
+    # scatter plots of individual feature against saleprice
+    relevant_features = ['GrLivArea', 'OverallQual']
+    # de.scatter_plot(training_set, 'GrLivArea')
+    # de.scatter_plot(training_set, 'OverallQual')
 
     # scatter plot "large spot 1"
-    de.scatter_plot(training_set, 'TotalBsmtSF')
-    de.scatter_plot(training_set, '1stFlrSF')
+    large_spot_features_1 = ['TotalBsmtSF', '1stFlrSF']
+    # de.scatter_plot(training_set, 'TotalBsmtSF')
+    # de.scatter_plot(training_set, '1stFlrSF')
 
     # scatter plot "large spot 2"
-    de.scatter_plot(training_set, 'GarageYrBlt')
-    de.scatter_plot(training_set, 'GarageCars')
-    de.scatter_plot(training_set, 'GarageArea')
+    large_spot_features_2 = ['GarageYrBlt', 'GarageCars', 'GarageArea']
+    # de.scatter_plot(training_set, 'GarageYrBlt')
+    # de.scatter_plot(training_set, 'GarageCars')
+    # de.scatter_plot(training_set, 'GarageArea')
     
+    # features from heat map "spots"
+    hm_features = relevant_features + large_spot_features_1 #+ large_spot_features_2 # ~84%
+
+    # test with a few relevant features only
+    test_features = ['OverallQual', 'OverallCond', 'TotalBsmtSF', '1stFlrSF', '2ndFlrSF', 'GrLivArea']    # ~85%
+    
+    # coorelation matrix
+    # de.correlation_matrix(training_set)
+    largest_correlated_features = ['OverallQual', 'GrLivArea', 'GarageCars', 'TotalBsmtSF', 'FullBath', 'YearBuilt'] # ~82%
+    # de.scatter_pairplot(training_set, largest_correlated_features)
+    
+    # missing data
+    # remove features missing over 15% of data
+    missing_data = de.missing_data(training_set)
+    # print missing_data
+    # training_set = training_set.drop((missing_data[missing_data['Percent'] >= 0.15]).index, 1)
+    training_set = training_set.drop(missing_data.index, 1)
+    # print training_set.isnull().sum().max()
+
+    # combine features from heatmap and correlated data exploration
+    combined_features = largest_correlated_features + list(set(hm_features) - set(largest_correlated_features))
+    # print combined_features
+
     # split training set to features and labels
     training_set_labels = training_set['SalePrice']
     training_set_features = training_set.drop('SalePrice', axis=1)
-    
-    # TODO: clean up and preprocess data
-    # 1. drop irrelevant/invalid features 
-        # remove features with null values
-    # 2. label encoding on features requiring transformation
-
-    # test with a few relevant features only
-    relevant_features = ['OverallQual', 'OverallCond', 'TotalBsmtSF', '1stFlrSF', '2ndFlrSF', 'GrLivArea']
-    # test with features with spots on heat map
-    training_set_features = training_set_features[relevant_features]
+    training_set_features = training_set_features[test_features]
 
     # shuffle and split training data
     X_train, X_test, y_train, y_test = train_test_split(

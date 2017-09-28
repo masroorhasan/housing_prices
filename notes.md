@@ -16,3 +16,14 @@ TODO:
     * GarageYrBlt
     * GarageCars
     * GarageArea
+
+* correlation with SalePrice
+    * OverallQual=0.79
+    * GrLivArea=0.71
+    * GarageCars=0.64
+    * GarageArea=0.62
+    * TotalBsmtSF=0.61
+    * 1stFlrSF=0.61
+    * FullBath=0.56
+    * TotRmsAbvGrd=0.53
+    * YearBuilt=0.52
