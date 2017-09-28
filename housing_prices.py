@@ -1,8 +1,9 @@
-# import data modules
+# import python modules
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+
+# import modules
+import data_exploration as de
 
 # import sklearn modules
 from sklearn.metrics import r2_score, mean_squared_error, make_scorer
@@ -10,7 +11,6 @@ from sklearn.cross_validation import ShuffleSplit
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.model_selection import GridSearchCV
 from sklearn.cross_validation import train_test_split
-
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 '''
@@ -25,17 +25,22 @@ def main():
     print training_set.columns
     print training_set['SalePrice'].describe()
 
-    # scatter plot grlivarea/saleprice
-    # data = pd.concat([training_set['SalePrice'], training_set['OverallQual']], axis=1)
-    # data.plot.scatter(x='OverallQual', y='SalePrice', ylim=(0,800000));
+    # heat map
+    de.heat_map(training_set)
+
+    # scatter plots of feature against saleprice
+    de.scatter_plot(training_set, 'GrLivArea')
+    de.scatter_plot(training_set, 'OverallQual')
+
+    # scatter plot "large spot 1"
+    de.scatter_plot(training_set, 'TotalBsmtSF')
+    de.scatter_plot(training_set, '1stFlrSF')
+
+    # scatter plot "large spot 2"
+    de.scatter_plot(training_set, 'GarageYrBlt')
+    de.scatter_plot(training_set, 'GarageCars')
+    de.scatter_plot(training_set, 'GarageArea')
     
-
-    # correlation matrix
-    corrmat = training_set.corr()
-    f, ax = plt.subplots(figsize=(12, 9))
-    sns.heatmap(corrmat, vmax=.8, square=True);
-    plt.show()
-
     # split training set to features and labels
     training_set_labels = training_set['SalePrice']
     training_set_features = training_set.drop('SalePrice', axis=1)
@@ -47,6 +52,7 @@ def main():
 
     # test with a few relevant features only
     relevant_features = ['OverallQual', 'OverallCond', 'TotalBsmtSF', '1stFlrSF', '2ndFlrSF', 'GrLivArea']
+    # test with features with spots on heat map
     training_set_features = training_set_features[relevant_features]
 
     # shuffle and split training data
