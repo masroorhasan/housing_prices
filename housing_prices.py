@@ -10,6 +10,7 @@ import data_exploration as de
 from sklearn.metrics import r2_score, mean_squared_error, make_scorer
 from sklearn.cross_validation import ShuffleSplit
 from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import GridSearchCV
 from sklearn.cross_validation import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -30,10 +31,8 @@ def main():
     # data_playground(training_set, testing_set)
 
     # split training set to features and labels
-    # training_labels = training_set['SalePrice']
     training_labels = training_set.pop('SalePrice')
-    training_labels = np.log(training_labels)
-    # training_set = training_set.drop('SalePrice', axis=1, inplace=True)
+    training_labels = np.log(training_labels)   # normalize with log transform
     features = pd.concat([training_set, testing_set], keys=['train', 'test'])
     # print features.loc['train']
 
@@ -53,40 +52,45 @@ def main():
         test_size=0.2, 
         random_state=42)
     
-    # get decision tree regressor model
+    # get decision tree regressor model and predict
     dt_regressor_model = get_best_dt_regressor_model(X_train, y_train)
+    dt_pred = dt_regressor_model.predict(X_test)
+    print "R2 score from dt_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, dt_pred))
+    print "RMSE score from dt_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, dt_pred))
+    print "\n"
 
-    # predict on validation sets
-    pred = dt_regressor_model.predict(X_test)
-    # perf_metric_rmse(y_test, pred)
-    print "R2 score from dt_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, pred))
-    print "RMSE score from dt_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, pred))
+    # get gradient boost regressor model and predict
+    gb_regressor_model = get_best_gb_regressor_model(X_train, y_train)
+    gb_pred = gb_regressor_model.predict(X_test)
+    print "R2 score from gb_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, gb_pred))
+    print "RMSE score from gb_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, gb_pred))
 
     # get testing set from transformed datas
     testing_features = features.loc['test'].drop('Id', axis=1).select_dtypes(include=[np.number]).values
 
     # predict on testing set and save to csv
-    pred_test_set = np.exp(dt_regressor_model.predict(testing_features))
+    pred_test_set = (np.exp(dt_regressor_model.predict(testing_features)) + np.exp(gb_regressor_model.predict(testing_features))) / 2
     filename = "%s.csv" % (datetime.datetime.now().strftime("%Y-%m-%d,%H:%M:%S"))
     pd.DataFrame({'Id': testing_set.Id, 'SalePrice':pred_test_set}).to_csv(filename, index=False)
 
 '''
-Performs grid search cross validation over max depth parameter to get optimal DecisionTree regressor model
-trained on input data [X, y].
+Gets best DecisionTree regressor model based on grid search, trained on data [X, y].
 '''
 def get_best_dt_regressor_model(X, y):
     # create cross validation sets from training data
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
     # create decision tree regressor object
-    regressor = DecisionTreeRegressor()
+    regressor = DecisionTreeRegressor(random_state=42)
 
-    # set of parameters to test
-    gs_params = {'max_depth':[None,2,5,10,20],
-                'min_samples_split':[2,10,20],
-                'min_samples_leaf':[1,5,10],
-                'max_leaf_nodes':[None,5,10]
-                }
+    # params to tune
+    gs_params = {
+        'max_depth':[None,2,5,10,20],
+        'min_samples_split':[2,10,20],
+        'min_samples_leaf':[1,5,10],
+        'max_leaf_nodes':[None,5,10],
+        # 'max_features':[None,'sqrt','log2']
+    }
 
     # use r2 as scoring function
     gs_scoring_func = make_scorer(perf_metric_r2)
@@ -105,6 +109,47 @@ def get_best_dt_regressor_model(X, y):
     print "Optimal max_leaf_nodes for model {}".format(model.get_params()['max_leaf_nodes'])
 
     # return optimal model from fitted data
+    return model
+
+'''
+Gets best GradientBoost regressor model based on grid search, trained on data [X, y].
+'''
+def get_best_gb_regressor_model(X, y):
+    # create cross validation sets from training data
+    cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
+
+    # create the gradient boost regressor object
+    regressor = GradientBoostingRegressor(random_state=42)
+
+    # params to tune
+    gs_params = {
+        # 'loss':["ls","lad","huber","quantile"],
+        # 'learning_rate':[0.1,0.2],
+        'n_estimators':[200],
+        'max_depth':[10,20],
+        'min_samples_split':[2,10],
+        'min_samples_leaf':[5],
+        # 'max_leaf_nodes':[None,5]
+        # 'max_features':[None,'sqrt','log2']
+    }
+
+    # use r2 as scoring function
+    gs_scoring_func = make_scorer(perf_metric_r2)
+
+    # create grid search object
+    grid_search = GridSearchCV(regressor, param_grid=gs_params, scoring=gs_scoring_func, cv=cv_sets)
+
+    # compute optimal model by fitting grid search object to data
+    grid_search = grid_search.fit(X, y)
+    model = grid_search.best_estimator_
+
+    # print optimal params
+    print "Optimal max_depth for model {}".format(model.get_params()['max_depth'])
+    print "Optimal min_samples_split for model {}".format(model.get_params()['min_samples_split'])
+    print "Optimal min_samples_leaf for model {}".format(model.get_params()['min_samples_leaf'])
+    print "Optimal max_leaf_nodes for model {}".format(model.get_params()['max_leaf_nodes'])
+
+    # return the model
     return model
 
 '''
@@ -146,6 +191,7 @@ def drop_missing_data(data):
     return updated_data
 
 '''
+Transforms and fills NA values in features data.
 '''
 def transform_na_data(data):
     
@@ -188,6 +234,7 @@ def transform_na_data(data):
     return data
 
 '''
+Data playground method with plot visualizations.
 '''
 def data_playground(training_set, testing_set):
     
