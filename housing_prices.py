@@ -10,7 +10,7 @@ import data_exploration as de
 from sklearn.metrics import r2_score, mean_squared_error, make_scorer
 from sklearn.cross_validation import ShuffleSplit
 from sklearn.tree import DecisionTreeRegressor
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.model_selection import GridSearchCV
 from sklearn.cross_validation import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -64,24 +64,36 @@ def main():
     gb_pred = gb_regressor_model.predict(X_test)
     print "R2 score from gb_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, gb_pred))
     print "RMSE score from gb_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, gb_pred))
+    print "\n"
+
+    # get random forest regressor model and predict
+    rf_regressor_model = get_best_rf_regressor_model(X_train, y_train)
+    rf_pred = rf_regressor_model.predict(X_test)
+    print "R2 score from rf_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, rf_pred))
+    print "RMSE score from rf_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, rf_pred))
 
     # get testing set from transformed datas
     testing_features = features.loc['test'].drop('Id', axis=1).select_dtypes(include=[np.number]).values
 
     # predict on testing set and save to csv
-    pred_test_set = (np.exp(dt_regressor_model.predict(testing_features)) + np.exp(gb_regressor_model.predict(testing_features))) / 2
+    pred_test_set = (
+        # np.exp(dt_regressor_model.predict(testing_features)) +
+        np.exp(gb_regressor_model.predict(testing_features)) +
+        np.exp(rf_regressor_model.predict(testing_features))
+        ) / 2
     filename = "%s.csv" % (datetime.datetime.now().strftime("%Y-%m-%d,%H:%M:%S"))
     pd.DataFrame({'Id': testing_set.Id, 'SalePrice':pred_test_set}).to_csv(filename, index=False)
 
 '''
 Gets best DecisionTree regressor model based on grid search, trained on data [X, y].
+Obselete: terrible accuracy weighing down mean.
 '''
 def get_best_dt_regressor_model(X, y):
     # create cross validation sets from training data
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
     # create decision tree regressor object
-    regressor = DecisionTreeRegressor(random_state=42)
+    regressor = DecisionTreeRegressor(max_features='sqrt',random_state=42)
 
     # params to tune
     gs_params = {
@@ -103,6 +115,7 @@ def get_best_dt_regressor_model(X, y):
     model = grid_search.best_estimator_
     
     # print optimal params
+    print "DT"
     print "Optimal max_depth for model {}".format(model.get_params()['max_depth'])
     print "Optimal min_samples_split for model {}".format(model.get_params()['min_samples_split'])
     print "Optimal min_samples_leaf for model {}".format(model.get_params()['min_samples_leaf'])
@@ -119,13 +132,54 @@ def get_best_gb_regressor_model(X, y):
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
     # create the gradient boost regressor object
-    regressor = GradientBoostingRegressor(random_state=42)
+    regressor = GradientBoostingRegressor(max_features='sqrt',random_state=42)
 
     # params to tune
     gs_params = {
         # 'loss':["ls","lad","huber","quantile"],
         # 'learning_rate':[0.1,0.2],
-        'n_estimators':[200],
+        'n_estimators':[100,200],
+        'max_depth':[10,20],
+        'min_samples_split':[2,10],
+        'min_samples_leaf':[5],
+        # 'max_leaf_nodes':[None,5]
+    }
+
+    # use r2 as scoring function
+    gs_scoring_func = make_scorer(perf_metric_r2)
+
+    # create grid search object
+    grid_search = GridSearchCV(regressor, param_grid=gs_params, scoring=gs_scoring_func, cv=cv_sets)
+
+    # compute optimal model by fitting grid search object to data
+    grid_search = grid_search.fit(X, y)
+    model = grid_search.best_estimator_
+
+    # print optimal params
+    print "GB"
+    print "Optimal max_depth for model {}".format(model.get_params()['max_depth'])
+    print "Optimal min_samples_split for model {}".format(model.get_params()['min_samples_split'])
+    print "Optimal min_samples_leaf for model {}".format(model.get_params()['min_samples_leaf'])
+    print "Optimal max_leaf_nodes for model {}".format(model.get_params()['max_leaf_nodes'])
+
+    # return the model
+    return model
+
+'''
+Gets best RandomForest regressor model based on grid search, trained on data [X, y].
+'''
+def get_best_rf_regressor_model(X, y):
+    # create cross validation sets from training data
+    cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
+
+    # create the gradient boost regressor object
+    regressor = RandomForestRegressor(max_features='sqrt',random_state=42)
+
+    # params to tune
+    gs_params = {
+        # 'loss':["ls","lad","huber","quantile"],
+        # 'learning_rate':[0.1,0.2],
+        'n_estimators':[50,100],
         'max_depth':[10,20],
         'min_samples_split':[2,10],
         'min_samples_leaf':[5],
@@ -144,6 +198,7 @@ def get_best_gb_regressor_model(X, y):
     model = grid_search.best_estimator_
 
     # print optimal params
+    print "RF"
     print "Optimal max_depth for model {}".format(model.get_params()['max_depth'])
     print "Optimal min_samples_split for model {}".format(model.get_params()['min_samples_split'])
     print "Optimal min_samples_leaf for model {}".format(model.get_params()['min_samples_leaf'])
@@ -186,12 +241,14 @@ def drop_missing_data(data):
     print sorted((missing_data[missing_data['Total'] == 1]).index)
     # remove features missing over 15% of data
     # training_set = training_set.drop((missing_data[missing_data['Percent'] >= 0.15]).index, axis=1)
+    # drop features missing more 1 data point
     updated_data = data.drop((missing_data[missing_data['Total'] > 1]).index, axis=1)
     # print training_set.isnull().sum().max()
     return updated_data
 
 '''
 Transforms and fills NA values in features data.
+Features considered are the ones missing at least 1 data point.
 '''
 def transform_na_data(data):
     
