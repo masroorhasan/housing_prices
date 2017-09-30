@@ -45,7 +45,7 @@ def main():
     # get training features
     training_features = features.loc['train'].drop('Id', axis=1).select_dtypes(include=[np.number]).values
 
-    # split data for train and test validation
+    # split data for train and test cross validation sets
     X_train, X_test, y_train, y_test = train_test_split(
         training_features, 
         training_labels,
@@ -53,33 +53,45 @@ def main():
         random_state=42)
     
     # get decision tree regressor model and predict
-    dt_regressor_model = get_best_dt_regressor_model(X_train, y_train)
-    dt_pred = dt_regressor_model.predict(X_test)
-    print "R2 score from dt_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, dt_pred))
-    print "RMSE score from dt_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, dt_pred))
-    print "\n"
+    # dt_regressor_model = get_best_dt_regressor_model(X_train, y_train)
+    # dt_pred = dt_regressor_model.predict(X_test)
+    # print "R2 score from dt_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, dt_pred))
+    # print "RMSE score from dt_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, dt_pred))
+    # print "\n"
 
-    # get gradient boost regressor model and predict
+    ##
+    ## GradientBoosting regressor ##
+    # Get model with best params fitted on cross validation set
     gb_regressor_model = get_best_gb_regressor_model(X_train, y_train)
-    gb_pred = gb_regressor_model.predict(X_test)
+    gb_pred = gb_regressor_model.best_estimator_.predict(X_test)
     print "R2 score from gb_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, gb_pred))
     print "RMSE score from gb_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, gb_pred))
     print "\n"
+    # create new gradientboosting regressor with params and train against full set
+    best_gb_regressor = GradientBoostingRegressor(random_state=42, **gb_regressor_model.best_params_)
+    best_gb_regressor.fit(training_features, training_labels)
 
-    # get random forest regressor model and predict
+    ##
+    ## RandomForest regressor ##
+    # Get model with best params fitted on cross validation set
     rf_regressor_model = get_best_rf_regressor_model(X_train, y_train)
-    rf_pred = rf_regressor_model.predict(X_test)
+    # print "feature importances: " 
+    # print rf_regressor_model.feature_importances_
+    rf_pred = rf_regressor_model.best_estimator_.predict(X_test)
     print "R2 score from rf_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, rf_pred))
     print "RMSE score from rf_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, rf_pred))
+    # create new randomforest regressor with params and train against full set
+    best_rf_regressor = RandomForestRegressor(random_state=42, **rf_regressor_model.best_params_)
+    best_rf_regressor.fit(training_features, training_labels)
 
-    # get testing set from transformed datas
-    testing_features = features.loc['test'].drop('Id', axis=1).select_dtypes(include=[np.number]).values
-
+    ##
+    ## Ensemble and predict ##
     # predict on testing set and save to csv
+    testing_features = features.loc['test'].drop('Id', axis=1).select_dtypes(include=[np.number]).values
     pred_test_set = (
         # np.exp(dt_regressor_model.predict(testing_features)) +
-        np.exp(gb_regressor_model.predict(testing_features)) +
-        np.exp(rf_regressor_model.predict(testing_features))
+        np.exp(best_gb_regressor.predict(testing_features)) +
+        np.exp(best_rf_regressor.predict(testing_features))
         ) / 2
     filename = "%s.csv" % (datetime.datetime.now().strftime("%Y-%m-%d,%H:%M:%S"))
     pd.DataFrame({'Id': testing_set.Id, 'SalePrice':pred_test_set}).to_csv(filename, index=False)
@@ -132,14 +144,15 @@ def get_best_gb_regressor_model(X, y):
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
     # create the gradient boost regressor object
-    regressor = GradientBoostingRegressor(max_features='sqrt',random_state=42)
+    regressor = GradientBoostingRegressor(random_state=42)
 
     # params to tune
     gs_params = {
         # 'loss':["ls","lad","huber","quantile"],
         # 'learning_rate':[0.1,0.2],
-        'n_estimators':[100,200],
-        'max_depth':[10,20],
+        'max_features':["sqrt"],
+        'n_estimators':[80,90,100],
+        'max_depth':[20,25],
         'min_samples_split':[2,10],
         'min_samples_leaf':[5],
         # 'max_leaf_nodes':[None,5]
@@ -152,15 +165,12 @@ def get_best_gb_regressor_model(X, y):
     grid_search = GridSearchCV(regressor, param_grid=gs_params, scoring=gs_scoring_func, cv=cv_sets)
 
     # compute optimal model by fitting grid search object to data
-    grid_search = grid_search.fit(X, y)
-    model = grid_search.best_estimator_
+    model = grid_search.fit(X, y)
+    # model = grid_search.best_estimator_
 
     # print optimal params
-    print "GB"
-    print "Optimal max_depth for model {}".format(model.get_params()['max_depth'])
-    print "Optimal min_samples_split for model {}".format(model.get_params()['min_samples_split'])
-    print "Optimal min_samples_leaf for model {}".format(model.get_params()['min_samples_leaf'])
-    print "Optimal max_leaf_nodes for model {}".format(model.get_params()['max_leaf_nodes'])
+    print "GradientBoosting"
+    print model.best_params_
 
     # return the model
     return model
@@ -173,14 +183,15 @@ def get_best_rf_regressor_model(X, y):
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
     # create the gradient boost regressor object
-    regressor = RandomForestRegressor(max_features='sqrt',random_state=42)
+    regressor = RandomForestRegressor(random_state=42)
 
     # params to tune
     gs_params = {
         # 'loss':["ls","lad","huber","quantile"],
         # 'learning_rate':[0.1,0.2],
-        'n_estimators':[50,100],
-        'max_depth':[10,20],
+        'max_features':["sqrt"],
+        'n_estimators':[110,120,130],
+        'max_depth':[5,10],
         'min_samples_split':[2,10],
         'min_samples_leaf':[5],
         # 'max_leaf_nodes':[None,5]
@@ -194,15 +205,9 @@ def get_best_rf_regressor_model(X, y):
     grid_search = GridSearchCV(regressor, param_grid=gs_params, scoring=gs_scoring_func, cv=cv_sets)
 
     # compute optimal model by fitting grid search object to data
-    grid_search = grid_search.fit(X, y)
-    model = grid_search.best_estimator_
-
-    # print optimal params
-    print "RF"
-    print "Optimal max_depth for model {}".format(model.get_params()['max_depth'])
-    print "Optimal min_samples_split for model {}".format(model.get_params()['min_samples_split'])
-    print "Optimal min_samples_leaf for model {}".format(model.get_params()['min_samples_leaf'])
-    print "Optimal max_leaf_nodes for model {}".format(model.get_params()['max_leaf_nodes'])
+    model = grid_search.fit(X, y)
+    print "RandomForest"
+    print model.best_params_
 
     # return the model
     return model
@@ -251,7 +256,6 @@ Transforms and fills NA values in features data.
 Features considered are the ones missing at least 1 data point.
 '''
 def transform_na_data(data):
-    
     # fill NA with 0.0 for TotalBsmtSF
     # print "TotalBsmtSF missing:", data['TotalBsmtSF'].isnull().sum()
     data['TotalBsmtSF'] = data['TotalBsmtSF'].fillna(0.0)
