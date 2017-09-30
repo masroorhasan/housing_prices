@@ -11,7 +11,7 @@ def missing_data(data):
     total = data.isnull().sum().sort_values(ascending=False)
     percent = (data.isnull().sum()/data.isnull().count()).sort_values(ascending=False)
     missing_data = pd.concat([total, percent], axis=1, keys=['Total', 'Percent'])
-    return missing_data.head(20)
+    return missing_data #.head(20)
 
 '''
 Scatter plot.
