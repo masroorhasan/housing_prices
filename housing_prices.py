@@ -24,12 +24,22 @@ def main():
     testing_set = pd.read_csv('data/test.csv')
     # print training_set.head()
     # print testing_set.head()
-    # print training_set.columns
+    print training_set.columns
     print training_set['SalePrice'].describe()
 
     # explore data with plots
     # data_playground(training_set, testing_set)
 
+    # largest coorelation with sale price
+    corr_mat = training_set.corr()
+    corr_columns = corr_mat.nlargest(10, 'SalePrice')['SalePrice'].index
+    corr_columns = filter(lambda x : x != 'SalePrice', corr_columns)
+    # print "largest coorelation with SalePrice:"
+    # print corr_columns
+    columns = corr_columns+['Id']
+    # training_set = training_set[columns]
+    # testing_set = testing_set[columns]
+    
     # split training set to features and labels
     training_labels = training_set.pop('SalePrice')
     training_labels = np.log(training_labels)   # normalize with log transform
@@ -41,7 +51,7 @@ def main():
 
     # transform feature data as needed
     features = transform_na_data(features)
-
+    
     # get training features
     training_features = features.loc['train'].drop('Id', axis=1).select_dtypes(include=[np.number]).values
 
@@ -63,10 +73,7 @@ def main():
     ## GradientBoosting regressor ##
     # Get model with best params fitted on cross validation set
     gb_regressor_model = get_best_gb_regressor_model(X_train, y_train)
-    gb_pred = gb_regressor_model.best_estimator_.predict(X_test)
-    print "R2 score from gb_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, gb_pred))
-    print "RMSE score from gb_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, gb_pred))
-    print "\n"
+    print_model_prediction_scores(gb_regressor_model.best_estimator_, X_test, y_test)
     # create new gradientboosting regressor with params and train against full set
     best_gb_regressor = GradientBoostingRegressor(random_state=42, **gb_regressor_model.best_params_)
     best_gb_regressor.fit(training_features, training_labels)
@@ -75,11 +82,7 @@ def main():
     ## RandomForest regressor ##
     # Get model with best params fitted on cross validation set
     rf_regressor_model = get_best_rf_regressor_model(X_train, y_train)
-    # print "feature importances: " 
-    # print rf_regressor_model.feature_importances_
-    rf_pred = rf_regressor_model.best_estimator_.predict(X_test)
-    print "R2 score from rf_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, rf_pred))
-    print "RMSE score from rf_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, rf_pred))
+    print_model_prediction_scores(rf_regressor_model.best_estimator_, X_test, y_test)
     # create new randomforest regressor with params and train against full set
     best_rf_regressor = RandomForestRegressor(random_state=42, **rf_regressor_model.best_params_)
     best_rf_regressor.fit(training_features, training_labels)
@@ -95,6 +98,20 @@ def main():
         ) / 2
     filename = "%s.csv" % (datetime.datetime.now().strftime("%Y-%m-%d,%H:%M:%S"))
     pd.DataFrame({'Id': testing_set.Id, 'SalePrice':pred_test_set}).to_csv(filename, index=False)
+
+'''
+Prints model prediction scores based on [X, y] data.
+'''
+def print_model_prediction_scores(model, X, y):
+    # print model details
+    print(model)
+
+    # precit from set
+    predict = model.predict(X)
+    print "prediction score of cv set:"
+    print "R2 score: {0:.3f}".format(perf_metric_r2(y, predict))
+    print "RMSE score: {0:.3f}".format(perf_metric_rmse(y, predict))
+    print "\n"
 
 '''
 Gets best DecisionTree regressor model based on grid search, trained on data [X, y].
@@ -149,12 +166,21 @@ def get_best_gb_regressor_model(X, y):
     # params to tune
     gs_params = {
         # 'loss':["ls","lad","huber","quantile"],
-        # 'learning_rate':[0.1,0.2],
+        # 'learning_rate':[0.05,0.1],
         'max_features':["sqrt"],
+
         'n_estimators':[80,90,100],
+        # 'n_estimators':[500,1000],
+        
         'max_depth':[20,25],
+        # 'max_depth':[5,10],
+        
         'min_samples_split':[2,10],
+        # 'min_samples_split':[5,10,50],
+
         'min_samples_leaf':[5],
+        # 'min_samples_leaf':[15,30],
+
         # 'max_leaf_nodes':[None,5]
     }
 
@@ -183,19 +209,23 @@ def get_best_rf_regressor_model(X, y):
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
     # create the gradient boost regressor object
-    regressor = RandomForestRegressor(random_state=42)
+    regressor = RandomForestRegressor(n_jobs=-1, random_state=42)
 
     # params to tune
     gs_params = {
         # 'loss':["ls","lad","huber","quantile"],
-        # 'learning_rate':[0.1,0.2],
+        # 'oob_score':[True],
         'max_features':["sqrt"],
         'n_estimators':[110,120,130],
+
         'max_depth':[5,10],
+        # 'max_depth':[5,10,20],
+
         'min_samples_split':[2,10],
+        # 'min_samples_split':[2,5],
+
         'min_samples_leaf':[5],
-        # 'max_leaf_nodes':[None,5]
-        # 'max_features':[None,'sqrt','log2']
+        # 'min_samples_leaf':[5,10,50],
     }
 
     # use r2 as scoring function
@@ -256,40 +286,52 @@ Transforms and fills NA values in features data.
 Features considered are the ones missing at least 1 data point.
 '''
 def transform_na_data(data):
+    # print sorted(data.columns)
     # fill NA with 0.0 for TotalBsmtSF
     # print "TotalBsmtSF missing:", data['TotalBsmtSF'].isnull().sum()
-    data['TotalBsmtSF'] = data['TotalBsmtSF'].fillna(0.0)
+    if (data['TotalBsmtSF'].any()):
+        data['TotalBsmtSF'] = data['TotalBsmtSF'].fillna(0.0)
 
     # fill NA with 0.0 for BsmtFinSF1
-    data['BsmtFinSF1'] = data['BsmtFinSF1'].fillna(0.0)
+    if (data['BsmtFinSF1'].any()):
+        data['BsmtFinSF1'] = data['BsmtFinSF1'].fillna(0.0)
 
     # fill NA with 0.0 for BsmtFinSF2
-    data['BsmtFinSF2'] = data['BsmtFinSF2'].fillna(0.0)
+    if (data['BsmtFinSF2'].any()):
+        data['BsmtFinSF2'] = data['BsmtFinSF2'].fillna(0.0)
 
     # fill NA with 0.0 for BsmtUnfSF
-    data['BsmtUnfSF'] = data['BsmtUnfSF'].fillna(0.0)
+    if (data['BsmtUnfSF'].any()):
+        data['BsmtUnfSF'] = data['BsmtUnfSF'].fillna(0.0)
 
     # fill NA with mode of set for Electrical
     # print "Electrical missing:", data['Electrical'].isnull().sum()
-    data['Electrical'] = data['Electrical'].fillna(data['Electrical'].mode()[0])
+    if (data['Electrical'].any()):
+        data['Electrical'] = data['Electrical'].fillna(data['Electrical'].mode()[0])
 
     # fill NA with mode of set for Exterior1st
-    data['Exterior1st'] = data['Exterior1st'].fillna(data['Exterior1st'].mode()[0])
+    if (data['Exterior1st'].any()):
+        data['Exterior1st'] = data['Exterior1st'].fillna(data['Exterior1st'].mode()[0])
 
     # fill NA with mode of set for Exterior2nd
-    data['Exterior2nd'] = data['Exterior2nd'].fillna(data['Exterior2nd'].mode()[0])
+    if (data['Exterior2nd'].any()):
+        data['Exterior2nd'] = data['Exterior2nd'].fillna(data['Exterior2nd'].mode()[0])
 
     # fill NA with mode of set for KitchenQual
-    data['KitchenQual'] = data['KitchenQual'].fillna(data['KitchenQual'].mode()[0])
+    if (data['KitchenQual'].any()):
+        data['KitchenQual'] = data['KitchenQual'].fillna(data['KitchenQual'].mode()[0])
 
     # fill NA with 0 for GarageCars
-    data['GarageCars'] = data['GarageCars'].fillna(0)
+    if (data['GarageCars'].any()):
+        data['GarageCars'] = data['GarageCars'].fillna(0)
 
     # fill NA with 0 for GarageArea
-    data['GarageArea'] = data['GarageArea'].fillna(0.0)
+    if (data['GarageArea'].any()):
+        data['GarageArea'] = data['GarageArea'].fillna(0.0)
 
     # fill NA with mode of set for SaleType
-    data['SaleType'] = data['SaleType'].fillna(data['SaleType'].mode()[0])
+    if (data['SaleType'].any()):
+        data['SaleType'] = data['SaleType'].fillna(data['SaleType'].mode()[0])
 
     # return transformed data
     return data
