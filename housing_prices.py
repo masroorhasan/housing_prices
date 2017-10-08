@@ -48,7 +48,6 @@ def main():
     # Get model with best params fitted on cross validation set
     # gb_regressor_model = get_best_gb_regressor_model(X_train, y_train)
     # gb_params = gb_regressor_model.best_params_
-    # gb_params = {'min_samples_split': 2, 'n_estimators': 500, 'learning_rate': 0.05, 'max_depth': 3, 'min_samples_leaf': 10}
     gb_params = {
         'n_estimators': 3000, 
         'learning_rate': 0.01,
@@ -80,7 +79,7 @@ def main():
     rf_regressor_model = rf_regressor_model.fit(X_train, y_train)
     print_model_prediction_scores(rf_regressor_model, X_test, y_test)
     # create new randomforest regressor with params and train against full set
-    best_rf_regressor = RandomForestRegressor(random_state=42, n_jobs=5, **rf_params)#**rf_regressor_model.best_params_)
+    best_rf_regressor = RandomForestRegressor(random_state=42, n_jobs=5, **rf_params)
     best_rf_regressor.fit(training_features, training_labels)
 
     ##

@@ -74,23 +74,27 @@ Difference:
 ['BsmtFinSF1', 'BsmtFinSF2', 'BsmtFullBath', 'BsmtHalfBath', 'BsmtUnfSF', 'Exterior1st', 'Exterior2nd', 'Functional', 'GarageArea', 'GarageCars', 'KitchenQual', 'MSZoning', 'SaleType', 'TotalBsmtSF', 'Utilities']
 
 GradientBoostingRegressor(alpha=0.9, criterion='friedman_mse', init=None,
-             learning_rate=0.05, loss='ls', max_depth=3, max_features=None,
-             max_leaf_nodes=None, min_impurity_split=1e-07,
-             min_samples_leaf=10, min_samples_split=2,
-             min_weight_fraction_leaf=0.0, n_estimators=500,
-             presort='auto', random_state=42, subsample=1.0, verbose=0,
-             warm_start=False)
+             learning_rate=0.01, loss='huber', max_depth=3,
+             max_features='sqrt', max_leaf_nodes=None,
+             min_impurity_split=1e-07, min_samples_leaf=25,
+             min_samples_split=10, min_weight_fraction_leaf=0.0,
+             n_estimators=3000, presort='auto', random_state=42,
+             subsample=1.0, verbose=0, warm_start=False)
 prediction score of cv set:
-R2 score: 0.896
-RMSE score: 0.139
+R2 score: 0.907
+RMSE score: 0.132
+
 
 
 RandomForestRegressor(bootstrap=True, criterion='mse', max_depth=15,
            max_features='auto', max_leaf_nodes=None,
            min_impurity_split=1e-07, min_samples_leaf=2,
            min_samples_split=5, min_weight_fraction_leaf=0.0,
-           n_estimators=190, n_jobs=5, oob_score=False, random_state=42,
+           n_estimators=200, n_jobs=5, oob_score=False, random_state=42,
            verbose=0, warm_start=False)
 prediction score of cv set:
-R2 score: 0.882
-RMSE score: 0.148
+R2 score: 0.886
+RMSE score: 0.146
+
+
+TODO: train on XGBoost regression model as 3rd model
