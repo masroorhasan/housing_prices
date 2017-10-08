@@ -8,6 +8,7 @@ import data_exploration as de
 
 # import sklearn modules
 from sklearn.metrics import r2_score, mean_squared_error, make_scorer
+from sklearn.preprocessing import LabelEncoder
 from sklearn.cross_validation import ShuffleSplit
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
@@ -19,53 +20,18 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 Main method.
 '''
 def main():
-    # build training and testing tests
+    # Build training and testing tests
     training_set = pd.read_csv('data/train.csv')
     testing_set = pd.read_csv('data/test.csv')
-    # print training_set.columns
     print training_set['SalePrice'].describe()
 
-    # fill training data values
-    print "Missing data in TRAIN features"
-    a = sorted(de.missing_features(training_set))
-    print a
-
-    print "Missing data in TEST features"
-    b = sorted(de.missing_features(testing_set))
-    print b
-
-    print "Intersect:"
-    print sorted(list(set(b) & set(a)))
-
-    print "Difference:"
-    print sorted(list(set(b) - set(a)))
-
-    print "Before filling in missing TRAIN data features:"
-    print training_set[de.missing_features(training_set)].isnull().sum()
-    training_set = transform_missing_feature_data(training_set)
-    training_set = transform_special_train_data(training_set)
-    print "After filling in missing TRAIN data features"
-    print training_set[de.missing_features(training_set)].isnull().sum()
-    
-    print "Before filling in missing TEST data features:"
-    print testing_set[de.missing_features(testing_set)].isnull().sum()
-    testing_set = transform_missing_feature_data(testing_set)
-    testing_set = transform_special_test_data(testing_set)
-    print "After filling in missing TEST data features"
-    print testing_set[de.missing_features(testing_set)].isnull().sum()
-
-    # split training set to features and labels
+    # Get SalePrice labels from training set
     training_labels = training_set.pop('SalePrice')
     training_labels = np.log(training_labels)   # normalize with log transform
-    features = pd.concat([training_set, testing_set], keys=['train', 'test'])
-    # print features.loc['train']
-    # return
-
-    # drop missing features
-    # features = drop_missing_data(features)
     
-    # transform feature data as needed
-    # features = transform_missing_feature_values(features)
+    # Feature transformation
+    # Get transformed training and testing features as single df
+    features = transform_features(training_set, testing_set)
     
     # get training features
     training_features = features.loc['train'].drop('Id', axis=1).select_dtypes(include=[np.number]).values
@@ -82,20 +48,34 @@ def main():
     # Get model with best params fitted on cross validation set
     # gb_regressor_model = get_best_gb_regressor_model(X_train, y_train)
     # gb_params = gb_regressor_model.best_params_
-    gb_params = {'n_estimators': 500, 'learning_rate': 0.05, 'max_depth': 3, 'min_samples_leaf': 10, 'min_samples_split': 5}
+    # gb_params = {'min_samples_split': 2, 'n_estimators': 500, 'learning_rate': 0.05, 'max_depth': 3, 'min_samples_leaf': 10}
+    gb_params = {
+        'n_estimators': 3000, 
+        'learning_rate': 0.01,
+        'max_features':'sqrt',
+        'loss':'huber', 
+        'max_depth': 3, 
+        'min_samples_split': 10,
+        'min_samples_leaf': 25
+        }
     gb_regressor_model = GradientBoostingRegressor(random_state=42, **gb_params)
     gb_regressor_model = gb_regressor_model.fit(X_train, y_train)
     print_model_prediction_scores(gb_regressor_model, X_test, y_test)
     # create new gradientboosting regressor with params and train against full set
     best_gb_regressor = GradientBoostingRegressor(random_state=42, **gb_params)
     best_gb_regressor.fit(training_features, training_labels)
-
+    
     ##
     ## RandomForest regressor ##
     # Get model with best params fitted on cross validation set
     # rf_regressor_model = get_best_rf_regressor_model(X_train, y_train)
     # rf_params = rf_regressor_model.best_params_
-    rf_params = {'n_estimators': 200, 'max_depth': 10, 'min_samples_leaf': 5, 'min_samples_split': 10}
+    rf_params = {
+        'n_estimators': 200, 
+        'max_depth': 15,
+        'min_samples_split': 5,
+        'min_samples_leaf': 2,
+        }
     rf_regressor_model = RandomForestRegressor(random_state=42, n_jobs=5, **rf_params)
     rf_regressor_model = rf_regressor_model.fit(X_train, y_train)
     print_model_prediction_scores(rf_regressor_model, X_test, y_test)
@@ -116,53 +96,33 @@ def main():
     pd.DataFrame({'Id': testing_set.Id, 'SalePrice':pred_test_set}).to_csv(filename, index=False)
 
 '''
-Prints model prediction scores based on [X, y] data.
-'''
-def print_model_prediction_scores(model, X, y):
-    # print model details
-    print(model)
-
-    # precit from set
-    predict = model.predict(X)
-    print "prediction score of cv set:"
-    print "R2 score: {0:.3f}".format(perf_metric_r2(y, predict))
-    print "RMSE score: {0:.3f}".format(perf_metric_rmse(y, predict))
-    # de.pred_scatter_plot(y, predict)
-    print "\n"
-
-'''
 Gets best GradientBoost regressor model based on grid search, trained on data [X, y].
 '''
 def get_best_gb_regressor_model(X, y):
-    # create cross validation sets from training data
+    # Create cross validation sets from training data
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
-    # create the gradient boost regressor object
+    # Create the gradient boost regressor object
     regressor = GradientBoostingRegressor(random_state=42)
     
-    # params to tune
+    # Params to tune
     gs_params = {
-        'n_estimators':[500,1000],
-        'learning_rate':[0.05,0.1],
-        'max_depth':[3,5],
-        'min_samples_leaf':[5,10],
-        'min_samples_split':[2,5],
-        # 'min_samples_leaf':[15,30],
-        # 'subsample'[1.0,2.0]
+        'n_estimators':[2000,3000],
+        'learning_rate':[0.01,0.05],
+        'max_depth':[3,4,5],
+        'min_samples_leaf':[20,26],
+        'min_samples_split':[2,5,10]
         # 'max_leaf_nodes':[None,5]
     }
 
-    # use r2 as scoring function
+    # Use r2 as scoring function
     gs_scoring_func = make_scorer(perf_metric_r2)
 
-    # create grid search object
+    # Create grid search object and fit the data
     grid_search = GridSearchCV(regressor, param_grid=gs_params, scoring=gs_scoring_func, cv=cv_sets)
-
-    # compute optimal model by fitting grid search object to data
     model = grid_search.fit(X, y)
-    # model = grid_search.best_estimator_
-
-    # print optimal params
+    
+    # Print optimal params
     print "GradientBoosting"
     print model.best_params_
 
@@ -173,39 +133,54 @@ def get_best_gb_regressor_model(X, y):
 Gets best RandomForest regressor model based on grid search, trained on data [X, y].
 '''
 def get_best_rf_regressor_model(X, y):
-    # create cross validation sets from training data
+    # Create cross validation sets from training data
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
-    # create the gradient boost regressor object
+    # Create the gradient boost regressor object
     regressor = RandomForestRegressor(n_jobs=5, random_state=42)
     
-    # params to tune
+    # Params to tune
     gs_params = {
-        'n_estimators':[100,150,200],
-        'max_depth':[5,10],
-        'min_samples_leaf':[2,5],
+        'n_estimators':[180,190,200],
+        'max_depth':[10,12,15],
+        'min_samples_leaf':[2,3],
         'min_samples_split':[5,10],
     }
 
-    # use r2 as scoring function
+    # Use r2 as scoring function
     gs_scoring_func = make_scorer(perf_metric_r2)
 
-    # create grid search object
+    # Create grid search object and fit the data
     grid_search = GridSearchCV(regressor, param_grid=gs_params, scoring=gs_scoring_func, cv=cv_sets)
-
-    # compute optimal model by fitting grid search object to data
     model = grid_search.fit(X, y)
+
+    # Print optimal params
     print "RandomForest"
     print model.best_params_
 
-    # return the model
+    # Return the model
     return model
+
+'''
+Prints model prediction scores based on [X, y] data.
+'''
+def print_model_prediction_scores(model, X, y):
+    # Print model details
+    print(model)
+
+    # Precit from set
+    predict = model.predict(X)
+    print "prediction score of cv set:"
+    print "R2 score: {0:.3f}".format(perf_metric_r2(y, predict))
+    print "RMSE score: {0:.3f}".format(perf_metric_rmse(y, predict))
+    # de.pred_scatter_plot(y, predict)
+    print "\n"
 
 '''
 Calculate and return r2 score.
 '''
 def perf_metric_r2(y_true, y_predict):
-    # calculate r2 score and print
+    # Calculate r2 score and print
     r2 = r2_score(y_true, y_predict)
     # print "r2 score: {0:.3f}".format(r2)
     return r2
@@ -220,41 +195,66 @@ def perf_metric_rmse(y_true, y_predict):
     return rmse
 
 '''
-Drops missing data.
+Transforms features of training and testing sets.
+Returns concatanated data set.
 '''
-def drop_missing_data(data):
-    # missing data
-    missing_data = de.missing_data(data)
+def transform_features(training_set, testing_set):
+    # Features missing values in training set
+    print "Missing data in TRAIN features"
+    missing_train = sorted(de.missing_features(training_set))
+    print missing_train
 
-    # print data with more than 1 null values
-    print "data with > 1 null values:"
-    print sorted((missing_data[missing_data['Total'] > 1]).index)
+    # Features missing values in testing set
+    print "Missing data in TEST features"
+    missing_test = sorted(de.missing_features(testing_set))
+    print missing_test
+
+    # Features missing in testing and training sets
+    print "Intersect:"
+    print sorted(list(set(missing_test) & set(missing_train)))
+
+    # Features missing only in testing set
+    print "Difference:"
+    print sorted(list(set(missing_test) - set(missing_train)))
+
+    # Transform features in training set by filling in NaN values 
+    print "Before filling in missing TRAIN data features:"
+    print training_set[de.missing_features(training_set)].isnull().sum()
+    training_set = transform_missing_feature_data(training_set)
+    training_set = transform_special_train_data(training_set)
+    print "After filling in missing TRAIN data features"
+    print training_set[de.missing_features(training_set)].isnull().sum()
     
-    # print data with 1 null value
-    print "data with 1 null value:"
-    print sorted((missing_data[missing_data['Total'] == 1]).index)
-    # remove features missing over 15% of data
-    # training_set = training_set.drop((missing_data[missing_data['Percent'] >= 0.15]).index, axis=1)
-    # drop features missing more 1 data point
-    updated_data = data.drop((missing_data[missing_data['Total'] > 1]).index, axis=1)
-    # print training_set.isnull().sum().max()
-    return updated_data
+    # Transform features in testing set by filling in NaN values
+    print "Before filling in missing TEST data features:"
+    print testing_set[de.missing_features(testing_set)].isnull().sum()
+    testing_set = transform_missing_feature_data(testing_set)
+    testing_set = transform_special_test_data(testing_set)
+    print "After filling in missing TEST data features"
+    print testing_set[de.missing_features(testing_set)].isnull().sum()
+
+    # Combine training and testing sets into df
+    concat_data_set = pd.concat([training_set, testing_set], keys=['train', 'test'])
+
+    # Fix features that should be categorical
+    concat_data_set = transform_num_to_cat(concat_data_set)
+
+    # Transform categorical features by applying label encoding
+    concat_data_set = transform_label_encoding(concat_data_set)
+
+    # Return transformed set
+    return concat_data_set
 
 '''
 Transforms missing feature values in both training and testing data set.
 '''
 def transform_missing_feature_data(data):
-    
     # Fill NA with 'None' for categorical missing features
     data = de.fill_feature_missing_value(data, 'Alley', 'None')
 
     # Bsmt* missing features
     bsmt_features = ['BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2', 'BsmtQual']
     # Missing basement features have same indices where total basement square footage is 0.0 (i.e. no basement)
-    
-    # print data['TotalBsmtSF'][data['TotalBsmtSF'] == 0.0].index
-    # print data[bsmt_features][data['BsmtQual'].isnull()==True].index
-    # print data['TotalBsmtSF'][data['TotalBsmtSF'] == 0.0].index
     print np.array_equal(data[bsmt_features][data['BsmtCond'].isnull()==True].index, data['TotalBsmtSF'][data['TotalBsmtSF'] == 0.0].index)
     for bmst_feature in bsmt_features:
         data = de.fill_feature_missing_value(data, bmst_feature, 'None')
@@ -307,7 +307,6 @@ def transform_special_train_data(data):
 Transforms missing features in testing data set only.
 '''
 def transform_special_test_data(data):
-    
     # BsmtFinSF1, BsmtFinSF2, BsmtUnfSF, TotalBsmtSF
     bsmt_cont_features = ['BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF']
     for bsmt_feature in bsmt_cont_features:
@@ -344,58 +343,36 @@ def transform_special_test_data(data):
     return data
 
 '''
-Transforms and fills NA values in features data.
-Features considered are the ones missing at least 1 data point.
+Transforms numerical data that should be categorical.
 '''
-def transform_missing_feature_values(data):
-    # print sorted(data.columns)
-    # fill NA with 0.0 for TotalBsmtSF
-    # print "TotalBsmtSF missing:", data['TotalBsmtSF'].isnull().sum()
-    if (data['TotalBsmtSF'].any()):
-        data['TotalBsmtSF'] = data['TotalBsmtSF'].fillna(0.0)
+def transform_num_to_cat(data):
+    # MSSubClass
+    data['MSSubClass'] = data['MSSubClass'].apply(str)
 
-    # fill NA with 0.0 for BsmtFinSF1
-    if (data['BsmtFinSF1'].any()):
-        data['BsmtFinSF1'] = data['BsmtFinSF1'].fillna(0.0)
+    # MoSold
+    data['MoSold'] = data['MoSold'].astype(str)
 
-    # fill NA with 0.0 for BsmtFinSF2
-    if (data['BsmtFinSF2'].any()):
-        data['BsmtFinSF2'] = data['BsmtFinSF2'].fillna(0.0)
+    # OverallCond
+    data['OverallCond'] = data['OverallCond'].astype(str)
 
-    # fill NA with 0.0 for BsmtUnfSF
-    if (data['BsmtUnfSF'].any()):
-        data['BsmtUnfSF'] = data['BsmtUnfSF'].fillna(0.0)
+    # YrSold
+    data['YrSold'] = data['YrSold'].astype(str)
 
-    # fill NA with mode of set for Electrical
-    # print "Electrical missing:", data['Electrical'].isnull().sum()
-    if (data['Electrical'].any()):
-        data['Electrical'] = data['Electrical'].fillna(data['Electrical'].mode()[0])
+    # Return the data
+    return data
 
-    # fill NA with mode of set for Exterior1st
-    if (data['Exterior1st'].any()):
-        data['Exterior1st'] = data['Exterior1st'].fillna(data['Exterior1st'].mode()[0])
-
-    # fill NA with mode of set for Exterior2nd
-    if (data['Exterior2nd'].any()):
-        data['Exterior2nd'] = data['Exterior2nd'].fillna(data['Exterior2nd'].mode()[0])
-
-    # fill NA with mode of set for KitchenQual
-    if (data['KitchenQual'].any()):
-        data['KitchenQual'] = data['KitchenQual'].fillna(data['KitchenQual'].mode()[0])
-
-    # fill NA with 0 for GarageCars
-    if (data['GarageCars'].any()):
-        data['GarageCars'] = data['GarageCars'].fillna(0)
-
-    # fill NA with 0 for GarageArea
-    if (data['GarageArea'].any()):
-        data['GarageArea'] = data['GarageArea'].fillna(0.0)
-
-    # fill NA with mode of set for SaleType
-    if (data['SaleType'].any()):
-        data['SaleType'] = data['SaleType'].fillna(data['SaleType'].mode()[0])
-
-    # return transformed data
+'''
+Tansforms categorical data values with label encoding.
+'''
+def transform_label_encoding(data):
+    # Get features with categorical data
+    cat_features = sorted(list(set(data.columns) - set(data._get_numeric_data().columns)))
+    
+    # Process each categorical feature and apply LabelEncoder to it
+    for feature in cat_features:
+        label_encoder = LabelEncoder() 
+        label_encoder.fit(list(data[feature].values)) 
+        data[feature] = label_encoder.transform(list(data[feature].values))
     return data
 
 '''
@@ -403,4 +380,3 @@ Entry point.
 '''
 if __name__ == '__main__':
     main()
-

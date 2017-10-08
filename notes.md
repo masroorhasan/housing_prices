@@ -76,7 +76,7 @@ Difference:
 GradientBoostingRegressor(alpha=0.9, criterion='friedman_mse', init=None,
              learning_rate=0.05, loss='ls', max_depth=3, max_features=None,
              max_leaf_nodes=None, min_impurity_split=1e-07,
-             min_samples_leaf=10, min_samples_split=5,
+             min_samples_leaf=10, min_samples_split=2,
              min_weight_fraction_leaf=0.0, n_estimators=500,
              presort='auto', random_state=42, subsample=1.0, verbose=0,
              warm_start=False)
@@ -85,12 +85,12 @@ R2 score: 0.896
 RMSE score: 0.139
 
 
-RandomForestRegressor(bootstrap=True, criterion='mse', max_depth=10,
+RandomForestRegressor(bootstrap=True, criterion='mse', max_depth=15,
            max_features='auto', max_leaf_nodes=None,
-           min_impurity_split=1e-07, min_samples_leaf=5,
-           min_samples_split=10, min_weight_fraction_leaf=0.0,
-           n_estimators=200, n_jobs=5, oob_score=False, random_state=42,
+           min_impurity_split=1e-07, min_samples_leaf=2,
+           min_samples_split=5, min_weight_fraction_leaf=0.0,
+           n_estimators=190, n_jobs=5, oob_score=False, random_state=42,
            verbose=0, warm_start=False)
 prediction score of cv set:
-R2 score: 0.874
-RMSE score: 0.153
+R2 score: 0.882
+RMSE score: 0.148
