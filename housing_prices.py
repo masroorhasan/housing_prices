@@ -22,35 +22,50 @@ def main():
     # build training and testing tests
     training_set = pd.read_csv('data/train.csv')
     testing_set = pd.read_csv('data/test.csv')
-    # print training_set.head()
-    # print testing_set.head()
-    print training_set.columns
+    # print training_set.columns
     print training_set['SalePrice'].describe()
 
-    # explore data with plots
-    # data_playground(training_set, testing_set)
+    # fill training data values
+    print "Missing data in TRAIN features"
+    a = sorted(de.missing_features(training_set))
+    print a
 
-    # largest coorelation with sale price
-    corr_mat = training_set.corr()
-    corr_columns = corr_mat.nlargest(10, 'SalePrice')['SalePrice'].index
-    corr_columns = filter(lambda x : x != 'SalePrice', corr_columns)
-    # print "largest coorelation with SalePrice:"
-    # print corr_columns
-    columns = corr_columns+['Id']
-    # training_set = training_set[columns]
-    # testing_set = testing_set[columns]
+    print "Missing data in TEST features"
+    b = sorted(de.missing_features(testing_set))
+    print b
+
+    print "Intersect:"
+    print sorted(list(set(b) & set(a)))
+
+    print "Difference:"
+    print sorted(list(set(b) - set(a)))
+
+    print "Before filling in missing TRAIN data features:"
+    print training_set[de.missing_features(training_set)].isnull().sum()
+    training_set = transform_missing_feature_data(training_set)
+    training_set = transform_special_train_data(training_set)
+    print "After filling in missing TRAIN data features"
+    print training_set[de.missing_features(training_set)].isnull().sum()
     
+    print "Before filling in missing TEST data features:"
+    print testing_set[de.missing_features(testing_set)].isnull().sum()
+    testing_set = transform_missing_feature_data(testing_set)
+    testing_set = transform_special_test_data(testing_set)
+    print "After filling in missing TEST data features"
+    print testing_set[de.missing_features(testing_set)].isnull().sum()
+
     # split training set to features and labels
     training_labels = training_set.pop('SalePrice')
     training_labels = np.log(training_labels)   # normalize with log transform
     features = pd.concat([training_set, testing_set], keys=['train', 'test'])
     # print features.loc['train']
+    # return
 
     # drop missing features
-    features = drop_missing_data(features)
-
+    # features = drop_missing_data(features)
+    
     # transform feature data as needed
-    features = transform_na_data(features)
+    # features = transform_missing_feature_values(features)
     
     # get training features
     training_features = features.loc['train'].drop('Id', axis=1).select_dtypes(include=[np.number]).values
@@ -62,29 +77,30 @@ def main():
         test_size=0.2, 
         random_state=42)
     
-    # get decision tree regressor model and predict
-    # dt_regressor_model = get_best_dt_regressor_model(X_train, y_train)
-    # dt_pred = dt_regressor_model.predict(X_test)
-    # print "R2 score from dt_regressor_model pred: {0:.3f}".format(perf_metric_r2(y_test, dt_pred))
-    # print "RMSE score from dt_regressor_model pred: {0:.3f}".format(perf_metric_rmse(y_test, dt_pred))
-    # print "\n"
-
     ##
     ## GradientBoosting regressor ##
     # Get model with best params fitted on cross validation set
-    gb_regressor_model = get_best_gb_regressor_model(X_train, y_train)
-    print_model_prediction_scores(gb_regressor_model.best_estimator_, X_test, y_test)
+    # gb_regressor_model = get_best_gb_regressor_model(X_train, y_train)
+    # gb_params = gb_regressor_model.best_params_
+    gb_params = {'n_estimators': 500, 'learning_rate': 0.05, 'max_depth': 3, 'min_samples_leaf': 10, 'min_samples_split': 5}
+    gb_regressor_model = GradientBoostingRegressor(random_state=42, **gb_params)
+    gb_regressor_model = gb_regressor_model.fit(X_train, y_train)
+    print_model_prediction_scores(gb_regressor_model, X_test, y_test)
     # create new gradientboosting regressor with params and train against full set
-    best_gb_regressor = GradientBoostingRegressor(random_state=42, **gb_regressor_model.best_params_)
+    best_gb_regressor = GradientBoostingRegressor(random_state=42, **gb_params)
     best_gb_regressor.fit(training_features, training_labels)
 
     ##
     ## RandomForest regressor ##
     # Get model with best params fitted on cross validation set
-    rf_regressor_model = get_best_rf_regressor_model(X_train, y_train)
-    print_model_prediction_scores(rf_regressor_model.best_estimator_, X_test, y_test)
+    # rf_regressor_model = get_best_rf_regressor_model(X_train, y_train)
+    # rf_params = rf_regressor_model.best_params_
+    rf_params = {'n_estimators': 200, 'max_depth': 10, 'min_samples_leaf': 5, 'min_samples_split': 10}
+    rf_regressor_model = RandomForestRegressor(random_state=42, n_jobs=5, **rf_params)
+    rf_regressor_model = rf_regressor_model.fit(X_train, y_train)
+    print_model_prediction_scores(rf_regressor_model, X_test, y_test)
     # create new randomforest regressor with params and train against full set
-    best_rf_regressor = RandomForestRegressor(random_state=42, **rf_regressor_model.best_params_)
+    best_rf_regressor = RandomForestRegressor(random_state=42, n_jobs=5, **rf_params)#**rf_regressor_model.best_params_)
     best_rf_regressor.fit(training_features, training_labels)
 
     ##
@@ -111,47 +127,8 @@ def print_model_prediction_scores(model, X, y):
     print "prediction score of cv set:"
     print "R2 score: {0:.3f}".format(perf_metric_r2(y, predict))
     print "RMSE score: {0:.3f}".format(perf_metric_rmse(y, predict))
+    # de.pred_scatter_plot(y, predict)
     print "\n"
-
-'''
-Gets best DecisionTree regressor model based on grid search, trained on data [X, y].
-Obselete: terrible accuracy weighing down mean.
-'''
-def get_best_dt_regressor_model(X, y):
-    # create cross validation sets from training data
-    cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
-
-    # create decision tree regressor object
-    regressor = DecisionTreeRegressor(max_features='sqrt',random_state=42)
-
-    # params to tune
-    gs_params = {
-        'max_depth':[None,2,5,10,20],
-        'min_samples_split':[2,10,20],
-        'min_samples_leaf':[1,5,10],
-        'max_leaf_nodes':[None,5,10],
-        # 'max_features':[None,'sqrt','log2']
-    }
-
-    # use r2 as scoring function
-    gs_scoring_func = make_scorer(perf_metric_r2)
-
-    # create grid search object
-    grid_search = GridSearchCV(regressor, param_grid=gs_params, scoring=gs_scoring_func, cv=cv_sets)
-
-    # compute optimal model by fitting grid search object to data
-    grid_search = grid_search.fit(X, y)
-    model = grid_search.best_estimator_
-    
-    # print optimal params
-    print "DT"
-    print "Optimal max_depth for model {}".format(model.get_params()['max_depth'])
-    print "Optimal min_samples_split for model {}".format(model.get_params()['min_samples_split'])
-    print "Optimal min_samples_leaf for model {}".format(model.get_params()['min_samples_leaf'])
-    print "Optimal max_leaf_nodes for model {}".format(model.get_params()['max_leaf_nodes'])
-
-    # return optimal model from fitted data
-    return model
 
 '''
 Gets best GradientBoost regressor model based on grid search, trained on data [X, y].
@@ -162,25 +139,16 @@ def get_best_gb_regressor_model(X, y):
 
     # create the gradient boost regressor object
     regressor = GradientBoostingRegressor(random_state=42)
-
+    
     # params to tune
     gs_params = {
-        # 'loss':["ls","lad","huber","quantile"],
-        # 'learning_rate':[0.05,0.1],
-        'max_features':["sqrt"],
-
-        'n_estimators':[80,90,100],
-        # 'n_estimators':[500,1000],
-        
-        'max_depth':[20,25],
-        # 'max_depth':[5,10],
-        
-        'min_samples_split':[2,10],
-        # 'min_samples_split':[5,10,50],
-
-        'min_samples_leaf':[5],
+        'n_estimators':[500,1000],
+        'learning_rate':[0.05,0.1],
+        'max_depth':[3,5],
+        'min_samples_leaf':[5,10],
+        'min_samples_split':[2,5],
         # 'min_samples_leaf':[15,30],
-
+        # 'subsample'[1.0,2.0]
         # 'max_leaf_nodes':[None,5]
     }
 
@@ -209,23 +177,14 @@ def get_best_rf_regressor_model(X, y):
     cv_sets = ShuffleSplit(X.shape[0], n_iter=10, test_size=0.20, random_state=42)
 
     # create the gradient boost regressor object
-    regressor = RandomForestRegressor(n_jobs=-1, random_state=42)
-
+    regressor = RandomForestRegressor(n_jobs=5, random_state=42)
+    
     # params to tune
     gs_params = {
-        # 'loss':["ls","lad","huber","quantile"],
-        # 'oob_score':[True],
-        'max_features':["sqrt"],
-        'n_estimators':[110,120,130],
-
+        'n_estimators':[100,150,200],
         'max_depth':[5,10],
-        # 'max_depth':[5,10,20],
-
-        'min_samples_split':[2,10],
-        # 'min_samples_split':[2,5],
-
-        'min_samples_leaf':[5],
-        # 'min_samples_leaf':[5,10,50],
+        'min_samples_leaf':[2,5],
+        'min_samples_split':[5,10],
     }
 
     # use r2 as scoring function
@@ -282,10 +241,113 @@ def drop_missing_data(data):
     return updated_data
 
 '''
+Transforms missing feature values in both training and testing data set.
+'''
+def transform_missing_feature_data(data):
+    
+    # Fill NA with 'None' for categorical missing features
+    data = de.fill_feature_missing_value(data, 'Alley', 'None')
+
+    # Bsmt* missing features
+    bsmt_features = ['BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2', 'BsmtQual']
+    # Missing basement features have same indices where total basement square footage is 0.0 (i.e. no basement)
+    
+    # print data['TotalBsmtSF'][data['TotalBsmtSF'] == 0.0].index
+    # print data[bsmt_features][data['BsmtQual'].isnull()==True].index
+    # print data['TotalBsmtSF'][data['TotalBsmtSF'] == 0.0].index
+    print np.array_equal(data[bsmt_features][data['BsmtCond'].isnull()==True].index, data['TotalBsmtSF'][data['TotalBsmtSF'] == 0.0].index)
+    for bmst_feature in bsmt_features:
+        data = de.fill_feature_missing_value(data, bmst_feature, 'None')
+
+    # Fill missing Fence, FireplaceQu with None
+    data = de.fill_feature_missing_value(data, 'Fence', 'None')
+    data = de.fill_feature_missing_value(data, 'FireplaceQu', 'None')
+
+    # Garage* missing features
+    garage_features = ['GarageCond', 'GarageFinish', 'GarageQual', 'GarageType', 'GarageYrBlt']
+    print np.array_equal(data[garage_features][data['GarageCond'].isnull()==True].index, data['GarageArea'][data['GarageArea'] == 0.0].index)
+    # print 'float64'==data['GarageYrBlt'].dtype
+    # Fill missing features accordingly
+    for garage_feature in garage_features:
+        if 'float64'==data[garage_feature].dtype:
+            data = de.fill_feature_missing_value(data, garage_feature, 0)
+        else:
+            data = de.fill_feature_missing_value(data, garage_feature, 'None')
+
+    # LotFrontage: Linear feet of street connected to property
+    # Check coorelations between relevant features
+    # print data['LotFrontage'].corr(data['LotArea'])
+    # print data['LotFrontage'].corr(np.sqrt(data['LotArea']))
+    # Fill LotFrontage with mean for now
+    # TODO: Update
+    data = de.fill_feature_missing_value(data, 'LotFrontage', data['LotFrontage'].mean())
+
+    # Masonry missing features
+    # Missing values on same indices
+    print np.array_equal(data[data['MasVnrArea'].isnull()==True].index, data[data['MasVnrType'].isnull()==True].index)
+    data = de.fill_feature_missing_value(data, 'MasVnrArea', 0.0)
+    data = de.fill_feature_missing_value(data, 'MasVnrType', 'None')
+
+    # Fill MiscFeature, PoolQC with None values
+    data = de.fill_feature_missing_value(data, 'MiscFeature', 'None')
+    data = de.fill_feature_missing_value(data, 'PoolQC', 'None')
+    
+    # return updated data
+    return data
+
+'''
+Transforms missing features in training data set only.
+'''
+def transform_special_train_data(data):
+    # Fill missing Electrical with mode value
+    data = de.fill_feature_missing_value(data, 'Electrical', data['Electrical'].mode()[0])
+    return data
+
+'''
+Transforms missing features in testing data set only.
+'''
+def transform_special_test_data(data):
+    
+    # BsmtFinSF1, BsmtFinSF2, BsmtUnfSF, TotalBsmtSF
+    bsmt_cont_features = ['BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF']
+    for bsmt_feature in bsmt_cont_features:
+        data = de.fill_feature_missing_value(data, bsmt_feature, 0.0)
+
+    # BsmtFullBath, BsmtHalfBath
+    data = de.fill_feature_missing_value(data, 'BsmtFullBath', 0.0)
+    data = de.fill_feature_missing_value(data, 'BsmtHalfBath', 0.0)
+
+    # Exterior1st, Exterior2nd
+    data = de.fill_feature_missing_value(data, 'Exterior1st', data['Exterior1st'].mode()[0])
+    data = de.fill_feature_missing_value(data, 'Exterior2nd', data['Exterior2nd'].mode()[0])
+
+    # Functional
+    data = de.fill_feature_missing_value(data, 'Functional', data['Functional'].mode()[0])
+
+    # GarageCars, GarageArea
+    data = de.fill_feature_missing_value(data, 'GarageCars', 0.0)
+    data = de.fill_feature_missing_value(data, 'GarageArea', 0.0)
+
+    # KitchenQual
+    data = de.fill_feature_missing_value(data, 'KitchenQual', data['KitchenQual'].mode()[0])
+
+    # Fill MSZoning with mode value
+    data = de.fill_feature_missing_value(data, 'MSZoning', data['MSZoning'].mode()[0])
+
+    # SaleType
+    data = de.fill_feature_missing_value(data, 'SaleType', data['SaleType'].mode()[0])
+
+    # Fill Utilities with mode values
+    data = de.fill_feature_missing_value(data, 'Utilities', data['Utilities'].mode()[0])
+
+    # return data
+    return data
+
+'''
 Transforms and fills NA values in features data.
 Features considered are the ones missing at least 1 data point.
 '''
-def transform_na_data(data):
+def transform_missing_feature_values(data):
     # print sorted(data.columns)
     # fill NA with 0.0 for TotalBsmtSF
     # print "TotalBsmtSF missing:", data['TotalBsmtSF'].isnull().sum()
@@ -335,44 +397,6 @@ def transform_na_data(data):
 
     # return transformed data
     return data
-
-'''
-Data playground method with plot visualizations.
-'''
-def data_playground(training_set, testing_set):
-    
-    # few (relevant) features selected by eye balling the data
-    test_features = ['OverallQual', 'OverallCond', 'TotalBsmtSF', '1stFlrSF', '2ndFlrSF', 'GrLivArea']    # ~85%
-
-    # heat map
-    de.heat_map(training_set)
-
-    # scatter plots of individual feature against saleprice
-    relevant_features = ['GrLivArea', 'OverallQual']
-    for feature_name in relevant_features:
-        de.scatter_plot(training_set, feature_name)
-
-    # scatter plot "large spot 1"
-    large_spot_features_1 = ['TotalBsmtSF', '1stFlrSF']
-    for feature_name in large_spot_features_1:
-        de.scatter_plot(training_set, feature_name)
-
-    # scatter plot "large spot 2"
-    large_spot_features_2 = ['GarageYrBlt', 'GarageCars', 'GarageArea']
-    for feature_name in large_spot_features_2:
-        de.scatter_plot(training_set, feature_name)
-    
-    # features from heat map "spots"
-    hm_features = relevant_features + large_spot_features_1 #+ large_spot_features_2 # ~84%
-
-    # coorelation matrix
-    de.correlation_matrix(training_set)
-    largest_correlated_features = ['OverallQual', 'GrLivArea', 'GarageCars', 'TotalBsmtSF', 'FullBath', 'YearBuilt'] # ~82%
-    de.scatter_pairplot(training_set, largest_correlated_features)
-    
-    # combine features from heatmap and correlated data exploration
-    combined_features = largest_correlated_features + list(set(hm_features) - set(largest_correlated_features))
-    # print combined_features
 
 '''
 Entry point.
