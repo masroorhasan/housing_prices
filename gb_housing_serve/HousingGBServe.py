@@ -1,7 +1,7 @@
 import joblib
 import numpy as np
 
-class HousingGBServe:
+class HousingGBServe(object):
     def __init__(self, model_file='gb_regressor.dat'):
         self.model = joblib.load(model_file)
 

@@ -2,7 +2,7 @@ import joblib
 import numpy as np
 
 class HousingRFServe:
-    def __init__(self, model_file='../models/rf_regressor.dat'):
+    def __init__(self, model_file='rf_regressor.dat'):
         self.model = joblib.load(model_file)
 
     def predict(self, X, feature_names):
