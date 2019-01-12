@@ -10,6 +10,7 @@ import data_exploration as de
 # import sklearn modules
 from sklearn.metrics import r2_score, mean_squared_error, make_scorer
 from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import Imputer
 from sklearn.cross_validation import ShuffleSplit
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
@@ -311,12 +312,11 @@ def train_gradient_boost(featues, labels, X_train, X_test, y_train, y_test):
         'min_samples_leaf': 25
         }
     gb_regressor_model = GradientBoostingRegressor(random_state=42, **gb_params)
-    gb_regressor_model = gb_regressor_model.fit(X_train, y_train)
+    gb_regressor_model.fit(X_train, y_train)
+
+    # print scores and return model
     print_model_prediction_scores(gb_regressor_model, X_test, y_test)
-    # create new gradientboosting regressor with params and train against full set
-    best_gb_regressor = GradientBoostingRegressor(random_state=42, **gb_params)
-    best_gb_regressor.fit(featues, labels)
-    return best_gb_regressor
+    return gb_regressor_model
 
 def train_random_forest(featues, labels, X_train, X_test, y_train, y_test):
     """
@@ -329,12 +329,11 @@ def train_random_forest(featues, labels, X_train, X_test, y_train, y_test):
         'min_samples_leaf': 2,
         }
     rf_regressor_model = RandomForestRegressor(random_state=42, n_jobs=5, **rf_params)
-    rf_regressor_model = rf_regressor_model.fit(X_train, y_train)
+    rf_regressor_model.fit(X_train, y_train)
+
+    # print scores and return model
     print_model_prediction_scores(rf_regressor_model, X_test, y_test)
-    # create new randomforest regressor with params and train against full set
-    best_rf_regressor = RandomForestRegressor(random_state=42, n_jobs=5, **rf_params)
-    best_rf_regressor.fit(featues, labels)
-    return best_rf_regressor
+    return rf_regressor_model
 
 def ensemble_predict(features, testing_set, best_gb_regressor, best_rf_regressor):
     """
@@ -353,26 +352,32 @@ def save_model(model, model_file):
     joblib.dump(model, model_file)
     print("Model export success {}".format(model_file))
 
+def predict(model_file, model_name, X):
+    model = joblib.load(model_file)
+    print('{} predict: {}'.format(model_name, model.predict(X)))
+
 def main():
     # Build training and testing tests
     training_set = pd.read_csv('data/train.csv')
-    testing_set = pd.read_csv('data/test.csv')
+    training_set.dropna(axis=0, subset=['SalePrice'], inplace=True)
     print training_set['SalePrice'].describe()
 
-    # Get SalePrice labels from training set
-    training_labels = training_set.pop('SalePrice')
-    training_labels = np.log(training_labels)   # normalize with log transform
+    # training features
+    training_features = training_set.drop(['SalePrice'], axis=1).select_dtypes(exclude=['object']).values
 
-    # Feature transformation
-    features = transform_features(training_set, testing_set)
-    training_features = features.loc['train'].drop('Id', axis=1).select_dtypes(include=[np.number]).values
+    # training labels
+    training_labels = training_set.pop('SalePrice')
 
     # split data for train and test cross validation sets
     X_train, X_test, y_train, y_test = train_test_split(
         training_features,
         training_labels,
-        test_size=0.2,
+        test_size=0.25,
         random_state=42)
+
+    imputer = Imputer()
+    X_train = imputer.fit_transform(X_train)
+    X_test = imputer.transform(X_test)
 
 
     ## GradientBoosting regressor ##
@@ -395,6 +400,10 @@ def main():
     ## save models
     save_model(gb_regressor, 'gb_regressor.dat')
     save_model(rf_regressor, 'rf_regressor.dat')
+
+    # predict
+    predict('gb_regressor.dat', 'gb_regressor', np.ndarray([1, 37]))
+    predict('rf_regressor.dat', 'rf_regressor', np.ndarray([1, 37]))
 
 if __name__ == '__main__':
     main()
