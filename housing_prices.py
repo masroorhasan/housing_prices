@@ -398,12 +398,8 @@ def main():
                                         y_test)
 
     ## save models
-    save_model(gb_regressor, 'gb_regressor.dat')
-    save_model(rf_regressor, 'rf_regressor.dat')
-
-    # predict
-    predict('gb_regressor.dat', 'gb_regressor', np.ndarray([1, 37]))
-    predict('rf_regressor.dat', 'rf_regressor', np.ndarray([1, 37]))
+    save_model(gb_regressor, 'models/gb_regressor.dat')
+    save_model(rf_regressor, 'models/rf_regressor.dat')
 
 if __name__ == '__main__':
     main()
