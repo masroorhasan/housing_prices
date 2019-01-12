@@ -401,5 +401,9 @@ def main():
     save_model(gb_regressor, 'models/gb_regressor.dat')
     save_model(rf_regressor, 'models/rf_regressor.dat')
 
+    # predict
+    predict('models/gb_regressor.dat', 'gb_regressor', np.ndarray([1, 37]))
+    predict('models/rf_regressor.dat', 'rf_regressor', np.ndarray([1, 37]))
+
 if __name__ == '__main__':
     main()
